@@ -81,6 +81,16 @@ variable "ports" {
   default = []
 }
 
+variable "secrets" {
+  type = list(object({
+    path   = string
+    data   = optional(string, null)
+    source = optional(any, null)
+  }))
+  default     = []
+  description = "List of secrets, either raw with data+path or resource as source+path"
+}
+
 variable "user" {
   type    = string
   default = null
@@ -91,6 +101,21 @@ data "docker_registry_image" "main" {
   count = can(var.image.name) ? 0 : 1
 
   name = var.image
+}
+
+# Generate a secret resource for any "raw" incoming
+resource "docker_secret" "main" {
+  for_each = {
+    for s in var.secrets : s.path => s.data if s.source == null
+  }
+
+  data = base64encode(each.value)
+
+  # Hashing name allows new secret to be created and bound before old is deleted
+  name = "${var.name}-${md5(nonsensitive(each.value))}"
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 locals {
@@ -151,6 +176,21 @@ resource "docker_service" "main" {
             }
             no_copy = true
           }
+        }
+      }
+
+      dynamic "secrets" {
+        for_each = [
+          for s in var.secrets : {
+            path   = s.path
+            source = coalesce(s.source, docker_secret.main[s.path])
+          }
+        ]
+
+        content {
+          secret_id   = secrets.value.source.id
+          secret_name = secrets.value.source.name
+          file_name   = secrets.value.path
         }
       }
 
