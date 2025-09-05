@@ -1,50 +1,89 @@
-locals {
-  registry_hostname = "docker"
-  # Prescriptive domain for router
-  _registry = "${local.registry_hostname}.${local.ansible_vars.dns_domain}"
-  # Derived domain for dependents for automatic link
-  registry = "${module.docker_registry.name}.${local.ansible_vars.dns_domain}"
-
-  registry_rootdir = "/var/lib/registry"
+variable "constraints" {
+  type    = any
+  default = []
 }
 
+variable "host" {
+  type        = string
+  description = "Set to reflect back in url output for ease of use"
+}
 
-module "docker_registry" {
+variable "image_tag" {
+  type = string
+}
+
+variable "labels" {
+  type    = map(string)
+  default = {}
+}
+
+variable "log_driver" {
+  type = any
+}
+
+variable "name" {
+  type    = string
+  default = "registry"
+}
+
+variable "nfs_mount" {
+  type    = any
+  default = {}
+}
+
+variable "networks" {
+  type    = any
+  default = []
+}
+
+variable "port" {
+  type = number
+  default = 5000
+}
+
+variable "proxy_url" {
+  type = string
+  default = "https://registry-1.docker.io"
+}
+
+variable "root_directory" {
+  type        = string
+  description = "Ensure this is mounted in as nfs_mount"
+}
+
+module "this" {
   source = "../swarm_service"
 
-  name  = local.registry_hostname
-  image = "registry:${local.versions.docker_registry_tag}"
+  name  = var.name
+  image = "registry:${var.image_tag}"
+
+  constraints = var.constraints
 
   env = {
     #REGISTRY_LOG_ACCESSLOG_DISABLED           = false  # Debug
-    REGISTRY_PROXY_REMOTEURL = "https://registry-1.docker.io"
+    REGISTRY_PROXY_REMOTEURL = var.proxy_url
     #REGISTRY_PROXY_TTL                        = "730h"  # Unrecognized
-    REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY = local.registry_rootdir
+    REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY = var.root_directory
   }
 
-  nfs_mounts = [{
-    name    = "docker-registry"
-    target  = local.registry_rootdir
-    device  = ":/${local.shared.zpool_primary}/docker-registry"
-    options = "addr=${local.ansible.hostvars.stratos.ansible_host},rw,noatime"
-  }]
+  nfs_mounts = [var.nfs_mount]
 
-  labels = {
-    "traefik.enable"                                          = "true"
-    "traefik.http.routers.registry.entryPoints"               = "websecure"
-    "traefik.http.routers.registry.rule"                      = "Host(`${local._registry}`)"
-    "traefik.http.routers.registry.tls.certResolver"          = local.traefik_certsresolver
-    "traefik.http.services.registry.loadbalancer.server.port" = "5000"
-  }
+  labels = var.labels
 
-  networks = [
-    docker_network.traefik,
-  ]
+  networks = var.networks
 
   ports = [{
     internal = "5000"
-    external = local.ansible_vars.cluster_ports.docker
+    external = var.port
   }]
 
-  log_driver = local.loki_log_driver
+  log_driver = var.log_driver
+}
+
+output "name" {
+  value = module.this.name
+}
+
+output "url" {
+  value = "${var.host}:${module.this.port}"
 }
