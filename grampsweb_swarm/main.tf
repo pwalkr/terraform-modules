@@ -162,8 +162,8 @@ module "grampsweb" {
   log_driver  = var.log_driver
   user        = var.user
 
-  mounts    = local.mounts
-  mount_nfs = var.mount_nfs
+  mounts     = local.mounts
+  nfs_mounts = var.mount_nfs
 
   ports = [{
     internal = 5000
@@ -187,8 +187,8 @@ module "celery" {
   log_driver  = var.log_driver
   user        = var.user
 
-  mounts    = local.mounts
-  mount_nfs = var.mount_nfs
+  mounts     = local.mounts
+  nfs_mounts = var.mount_nfs
 
   depends_on = [
     module.redis
