@@ -306,3 +306,7 @@ resource "docker_service" "this" {
 output "name" {
   value = docker_service.this.name
 }
+
+output "port" {
+  value = try(docker_service.this.endpoint_spec[0].ports[0].published_port, null)
+}
