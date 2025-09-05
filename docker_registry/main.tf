@@ -10,7 +10,7 @@ locals {
 
 
 module "docker_registry" {
-  source = "./swarm_service"
+  source = "../swarm_service"
 
   name  = local.registry_hostname
   image = "registry:${local.versions.docker_registry_tag}"
