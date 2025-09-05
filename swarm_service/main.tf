@@ -1,7 +1,8 @@
 terraform {
   required_providers {
     docker = {
-      source = "kreuzwerker/docker"
+      source  = "kreuzwerker/docker"
+      version = "~> 3.0"
     }
   }
 }
@@ -17,6 +18,11 @@ variable "image" {
 variable "command" {
   type    = list(string)
   default = null
+}
+
+variable "args" {
+  type    = list(string)
+  default = []
 }
 
 variable "env" {
@@ -41,6 +47,32 @@ variable "constraints" {
   default = []
 }
 
+variable "configs" {
+  type = list(object({
+    source = map(string)
+    path   = string
+    mode   = optional(number, 0444)
+  }))
+  default = []
+}
+
+variable "configs_raw" {
+  type = list(object({
+    data = string
+    path = string
+    mode = optional(number, 0444)
+  }))
+  default = []
+}
+
+variable "secrets" {
+  type = list(object({
+    data = string
+    path = string
+  }))
+  default = []
+}
+
 variable "mounts" {
   type = list(object({
     target    = string
@@ -51,14 +83,13 @@ variable "mounts" {
   default = []
 }
 
-variable "mount_nfs" {
+variable "nfs_mounts" {
   type = list(object({
     name      = string
     target    = string
     read_only = optional(bool, false)
     device    = string
-    addr      = string
-    options   = optional(string, null)
+    options   = string
   }))
   default = []
 }
@@ -81,49 +112,48 @@ variable "ports" {
   default = []
 }
 
-variable "secrets" {
-  type = list(object({
-    path   = string
-    data   = optional(string, null)
-    source = optional(any, null)
-  }))
-  default     = []
-  description = "List of secrets, either raw with data+path or resource as source+path"
-}
-
 variable "user" {
   type    = string
   default = null
 }
 
-# To reduce docker pulls, reuse data.docker_registry_image between services
-data "docker_registry_image" "main" {
-  count = can(var.image.name) ? 0 : 1
-
-  name = var.image
-}
-
-# Generate a secret resource for any "raw" incoming
-resource "docker_secret" "main" {
+resource "docker_config" "this" {
+  # Convert list to map for for_each iteration - path will be unique
   for_each = {
-    for s in var.secrets : s.path => s.data if s.source == null
+    for index, config in var.configs_raw : config.path => config
   }
 
-  data = base64encode(each.value)
+  name = "${var.name}-${md5(each.value.data)}"
+  data = base64encode(each.value.data)
 
-  # Hashing name allows new secret to be created and bound before old is deleted
-  name = "${var.name}-${md5(nonsensitive(each.value))}"
   lifecycle {
     create_before_destroy = true
   }
 }
 
-locals {
-  image_name   = try(var.image.name, data.docker_registry_image.main[0].name)
-  image_digest = try(var.image.sha256_digest, data.docker_registry_image.main[0].sha256_digest)
+resource "docker_secret" "this" {
+  for_each = { for index, secret in var.secrets : secret.path => secret }
+
+  name = "${var.name}-${md5(each.value.data)}"
+  data = base64encode(each.value.data)
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
-resource "docker_service" "main" {
+data "docker_registry_image" "this" {
+  count = can(var.image.name) ? 0 : 1
+
+  name = var.image
+}
+
+locals {
+  image_name   = try(var.image.name, data.docker_registry_image.this[0].name)
+  image_digest = try(var.image.sha256_digest, data.docker_registry_image.this[0].sha256_digest)
+}
+
+resource "docker_service" "this" {
   name = var.name
 
   dynamic "labels" {
@@ -145,8 +175,38 @@ resource "docker_service" "main" {
     container_spec {
       image   = "${local.image_name}@${local.image_digest}"
       command = var.command
+      args    = var.args
       env     = var.env
       user    = var.user
+
+      dynamic "configs" {
+        for_each = var.configs
+        content {
+          config_id   = configs.value.source.id
+          config_name = configs.value.source.name
+          file_name   = configs.value.path
+          file_mode   = configs.value.mode
+        }
+      }
+
+      dynamic "configs" {
+        for_each = var.configs_raw
+        content {
+          config_id   = docker_config.this[configs.value.path].id
+          config_name = docker_config.this[configs.value.path].name
+          file_name   = configs.value.path
+          file_mode   = configs.value.mode
+        }
+      }
+
+      dynamic "secrets" {
+        for_each = var.secrets
+        content {
+          secret_id   = docker_secret.this[secrets.value.path].id
+          secret_name = docker_secret.this[secrets.value.path].name
+          file_name   = secrets.value.path
+        }
+      }
 
       dynamic "mounts" {
         for_each = var.mounts
@@ -159,7 +219,7 @@ resource "docker_service" "main" {
       }
 
       dynamic "mounts" {
-        for_each = var.mount_nfs
+        for_each = var.nfs_mounts
         content {
           source    = "${mounts.value.name}-${md5(jsonencode(mounts.value))}"
           target    = mounts.value["target"]
@@ -170,27 +230,11 @@ resource "docker_service" "main" {
             driver_name = "local"
             driver_options = {
               device = mounts.value["device"]
-              # addr=$addr,$options
-              o    = join(",", compact(["addr=${mounts.value["addr"]}", mounts.value["options"]]))
-              type = "nfs4"
+              o      = mounts.value["options"]
+              type   = "nfs4"
             }
             no_copy = true
           }
-        }
-      }
-
-      dynamic "secrets" {
-        for_each = [
-          for s in var.secrets : {
-            path   = s.path
-            source = coalesce(s.source, docker_secret.main[s.path])
-          }
-        ]
-
-        content {
-          secret_id   = secrets.value.source.id
-          secret_name = secrets.value.source.name
-          file_name   = secrets.value.path
         }
       }
 
@@ -260,5 +304,5 @@ resource "docker_service" "main" {
 }
 
 output "name" {
-  value = docker_service.main.name
+  value = docker_service.this.name
 }
