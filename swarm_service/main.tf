@@ -117,6 +117,18 @@ variable "user" {
   default = null
 }
 
+variable "cap_add" {
+  type    = list(string)
+  default = []
+}
+
+# Resolvers for the container. Set it where the image must resolve names the
+# host's own resolv.conf would not give it.
+variable "dns" {
+  type    = list(string)
+  default = []
+}
+
 resource "docker_config" "this" {
   # Convert list to map for for_each iteration - path will be unique
   for_each = {
@@ -178,6 +190,14 @@ resource "docker_service" "this" {
       args    = var.args
       env     = var.env
       user    = var.user
+      cap_add = var.cap_add
+
+      dynamic "dns_config" {
+        for_each = length(var.dns) > 0 ? [var.dns] : []
+        content {
+          nameservers = dns_config.value
+        }
+      }
 
       dynamic "configs" {
         for_each = var.configs
