@@ -17,6 +17,15 @@ resource "adguard_config" "main" {
   querylog                        = var.config.querylog
   stats                           = var.config.stats
   dhcp                            = var.config.dhcp
+
+  lifecycle {
+    ignore_changes = [
+      # Live value is [], which the provider's validators won't accept in config;
+      # leaving them unset plans [] -> null on every run.
+      dns.allowed_clients,
+      dns.disallowed_clients,
+    ]
+  }
 }
 
 resource "adguard_rewrite" "dns" {
