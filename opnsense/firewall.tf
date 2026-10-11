@@ -3,7 +3,7 @@ resource "opnsense_firewall_nat_port_forward" "rule" {
 
   description = each.value.description
   enabled     = true
-  interface   = each.value.interface
+  interface   = [each.value.interface]
   protocol    = each.value.protocol
 
   source      = each.value.source
