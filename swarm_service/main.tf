@@ -1,8 +1,7 @@
 terraform {
   required_providers {
     docker = {
-      source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      source = "kreuzwerker/docker"
     }
   }
 }
@@ -49,7 +48,7 @@ variable "constraints" {
 
 variable "configs" {
   type = list(object({
-    source = map(string)
+    source = object({ id = string, name = string })
     path   = string
     mode   = optional(number, 0444)
   }))
@@ -299,7 +298,7 @@ resource "docker_service" "this" {
     dynamic "networks_advanced" {
       for_each = var.networks
       content {
-        name = networks_advanced.value.id
+        id = networks_advanced.value.id
       }
     }
 
