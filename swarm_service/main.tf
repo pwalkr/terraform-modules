@@ -296,10 +296,6 @@ resource "docker_service" "this" {
       # defaults
       max_replicas = 0
       prefs        = []
-      platforms {
-        architecture = "amd64"
-        os           = "linux"
-      }
     }
 
     dynamic "networks_advanced" {
@@ -326,6 +322,11 @@ resource "docker_service" "this" {
     }
     # defaults
     mode = "vip"
+  }
+
+  lifecycle {
+    # Create fills this from the image's manifest list; config cannot match it.
+    ignore_changes = [task_spec[0].placement[0].platforms]
   }
 }
 
