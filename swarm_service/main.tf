@@ -128,6 +128,12 @@ variable "dns" {
   default = []
 }
 
+# SIGTERM to SIGKILL; 0s kills the task outright on every update.
+variable "stop_grace_period" {
+  type    = string
+  default = "30s"
+}
+
 resource "docker_config" "this" {
   # Convert list to map for for_each iteration - path will be unique
   for_each = {
@@ -257,11 +263,12 @@ resource "docker_service" "this" {
         }
       }
 
+      stop_grace_period = var.stop_grace_period
+
       # defaults
-      groups            = []
-      read_only         = false
-      stop_grace_period = "0s"
-      sysctl            = {}
+      groups    = []
+      read_only = false
+      sysctl    = {}
       healthcheck {
         interval     = "0s"
         retries      = 0
