@@ -24,6 +24,8 @@ resource "adguard_config" "main" {
       # leaving them unset plans [] -> null on every run.
       dns.allowed_clients,
       dns.disallowed_clients,
+      # Managed externally to keep certs out of state
+      tls,
     ]
   }
 }
