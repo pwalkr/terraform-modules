@@ -7,7 +7,7 @@ terraform {
 }
 
 variable "config" {
-  description = "Complete AdGuard Home configuration in one map: adguard_config arguments (blocked_services_pause_schedule, dns, querylog, stats, dhcp), rewrites (domain => answer), and clients (adguard_client arguments keyed by name)."
+  description = "Complete AdGuard Home configuration in one map: adguard_config arguments (blocked_services_pause_schedule, dns, querylog, stats, dhcp), rewrites (domain => answer), user_rules (filtering rule strings), and clients (adguard_client arguments keyed by name)."
   type        = any
 }
 
@@ -33,6 +33,13 @@ resource "adguard_rewrite" "dns" {
 
   domain = each.key
   answer = each.value
+}
+
+# Optional: this replaces any rules added in the UI.
+resource "adguard_user_rules" "main" {
+  count = can(var.config.user_rules) ? 1 : 0
+
+  rules = var.config.user_rules
 }
 
 resource "adguard_client" "list" {
